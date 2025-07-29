@@ -61,9 +61,30 @@ function initializeDatabase() {
             FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
 
+        // SQL for creating the 'categories' table
+        $categoriesTableSql = "
+        CREATE TABLE IF NOT EXISTS `categories` (
+            `id` INT PRIMARY KEY,
+            `name` VARCHAR(255) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+
+        // SQL for creating the 'questions' table
+        $questionsTableSql = "
+        CREATE TABLE IF NOT EXISTS `questions` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `category_id` INT NOT NULL,
+            `difficulty` VARCHAR(50) NOT NULL,
+            `question` TEXT NOT NULL,
+            `correct_answer` VARCHAR(255) NOT NULL,
+            `incorrect_answers` JSON NOT NULL,
+            FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+
         // Execute the SQL to create the tables
         $pdo->exec($usersTableSql);
         $pdo->exec($historyTableSql);
+        $pdo->exec($categoriesTableSql);
+        $pdo->exec($questionsTableSql);
 
         // This is a good place to check if the script is run directly to initialize
         if (php_sapi_name() === 'cli' || (isset($_GET['init']) && $_GET['init'] === 'true')) {
