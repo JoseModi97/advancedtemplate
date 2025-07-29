@@ -2,13 +2,17 @@
 /** @var yii\web\View $this */
 $this->title = 'Quiz';
 ?>
-<div class="quiz-index text-center">
-    <div class="jumbotron">
-        <h1 class="display-4">Welcome to the Quiz!</h1>
-        <p class="lead">Test your knowledge with our fun and challenging quiz.</p>
-        <hr class="my-4">
-        <p>
-            <a class="btn btn-lg btn-success" href="<?= \yii\helpers\Url::to(['/quiz/start']) ?>">Start Quiz</a>
-        </p>
-    </div>
+<div class="container mx-auto p-4">
+    <header class="text-center py-8 relative">
+        <h1 class="text-4xl font-bold text-blue-600">Trivia Quiz</h1>
+    </header>
+
+    <section id="settings-section" class="mb-8 p-6 bg-white rounded-lg shadow-md">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">Quiz Settings</h2>
+        <div class="mt-6 text-center">
+            <a href="<?= \yii\helpers\Url::to(['/quiz/start']) ?>" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow">
+                Start Quiz
+            </a>
+        </div>
+    </section>
 </div>
