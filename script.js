@@ -40,7 +40,7 @@ $(document).ready(function() {
     let totalQuizTime = 0; // in seconds
     let timeRemaining = 0; // in seconds
 
-    const API_URL = "/api/";
+    const API_URL = "api/";
 
     // Timer Constants
     const BASE_SECONDS_PER_QUESTION = 20; // Average time for a medium question
@@ -109,7 +109,7 @@ $(document).ready(function() {
 
     // --- User Auth Constants ---
     const MOCK_USER_DB_KEY = 'quizUserDB'; // localStorage key
-    const SESSION_COOKIE_NAME = 'loggedInQuizUser';
+    const SESSION_COOKIE_NAME = 'PHPSESSID';
 
 
     // --- Timer Functions ---
@@ -189,20 +189,28 @@ $(document).ready(function() {
 
 
     // --- Initialization ---
-    function init() {
+    async function init() {
         console.log("Quiz App Initialized");
-        // Check for logged-in user on page load
-        const loggedInUser = getCookie(SESSION_COOKIE_NAME);
-        if (loggedInUser) {
-            console.log("User", loggedInUser, "is logged in from cookie.");
-            updateUIAfterLogin(loggedInUser); // This will show quiz, hide auth, populate categories, get token
-        } else {
-            console.log("No user logged in. Showing auth forms.");
-            updateUIAfterLogout(); // This will show auth forms, hide quiz
-            // No need to populate categories or get OpenTDB token if not logged in
+        // Check login status with the backend
+        try {
+            const response = await $.ajax({
+                url: `${API_URL}check_login.php`,
+                method: 'GET',
+                dataType: 'json'
+            });
+
+            if (response.loggedIn) {
+                console.log("User", response.user.username, "is logged in from backend session.");
+                updateUIAfterLogin(response.user.username);
+            } else {
+                console.log("No user logged in. Showing auth forms.");
+                updateUIAfterLogout();
+            }
+        } catch (error) {
+            console.error("Error checking login status:", error);
+            // Fallback to logged-out state if the check fails
+            updateUIAfterLogout();
         }
-        // Note: populateCategories() and requestSessionToken() are now called conditionally
-        // within updateUIAfterLogin() or not at all in updateUIAfterLogout() for the initial state.
     }
 
     // --- API Communication ---
@@ -215,14 +223,12 @@ $(document).ready(function() {
             });
             if (response.response_code === 0 && response.token) {
                 sessionToken = response.token;
-                console.log("Session token obtained:", sessionToken);
+                console.log("Session token obtained via backend:", sessionToken);
             } else {
-                console.error("Failed to retrieve session token:", response);
-                // Optionally, display an error to the user or retry
+                console.error("Failed to retrieve session token via backend:", response);
             }
         } catch (error) {
-            console.error("Error requesting session token:", error);
-            // Optionally, display an error to the user
+            console.error("Error requesting session token via backend:", error);
         }
     }
 
@@ -235,21 +241,21 @@ $(document).ready(function() {
                 dataType: 'json'
             });
             if (response.response_code === 0) {
-                console.log("Session token reset successfully.");
+                console.log("Session token reset successfully via backend.");
                 sessionToken = null; // Clear the old token
                 await requestSessionToken(); // Get a new one
             } else {
-                console.error("Failed to reset session token:", response);
+                console.error("Failed to reset session token via backend:", response);
             }
         } catch (error) {
-            console.error("Error resetting session token:", error);
+            console.error("Error resetting session token via backend:", error);
         }
     }
 
     async function populateCategories() {
         try {
             const response = await $.ajax({
-                url: `${API_URL}categories`,
+                url: `${API_URL}categories.php`,
                 method: 'GET',
                 dataType: 'json'
             });
@@ -259,13 +265,13 @@ $(document).ready(function() {
                 response.forEach(category => {
                     $categorySelect.append(`<option value="${category.id}">${category.name}</option>`);
                 });
-                console.log("Categories populated.");
+                console.log("Categories populated via backend.");
             } else {
-                console.error("No categories found or error in response:", response);
+                console.error("No categories found or error in response from backend:", response);
                 $categorySelect.append('<option value="">Could not load categories</option>');
             }
         } catch (error) {
-            console.error("Error fetching categories:", error);
+            console.error("Error fetching categories via backend:", error);
             $categorySelect.append('<option value="">Error loading categories</option>');
         }
     }
@@ -276,7 +282,7 @@ $(document).ready(function() {
         const selectedDifficulty = $difficultySelect.val();
         const selectedType = $typeSelect.val();
 
-        let apiUrl = `${API_URL}questions?amount=${questionAmount}`;
+        let apiUrl = `${API_URL}questions.php?amount=${questionAmount}`;
         if (selectedCategory) {
             apiUrl += `&category=${selectedCategory}`;
         }
@@ -287,7 +293,7 @@ $(document).ready(function() {
             apiUrl += `&type=${selectedType}`;
         }
 
-        console.log("Fetching questions from:", apiUrl);
+        console.log("Fetching questions from backend proxy:", apiUrl);
         $errorMessageQuiz.text('').addClass('hidden'); // Clear previous errors
 
         try {
@@ -296,17 +302,17 @@ $(document).ready(function() {
                 method: 'GET',
                 dataType: 'json'
             });
-            console.log("API Response:", response);
+            console.log("Backend API Response:", response);
             questions = response;
             if (questions.length === 0) {
-                console.warn("API Success but no questions returned.");
+                console.warn("Backend success but no questions returned.");
                 $errorMessageQuiz.text('No questions found for your criteria. Please try different settings.').removeClass('hidden');
                 showSection($resultsSection);
                 return false;
             }
             return true;
         } catch (error) {
-            console.error("Error fetching questions:", error);
+            console.error("Error fetching questions from backend:", error);
             $errorMessageQuiz.text('Failed to fetch questions. Please check your connection and try again.').removeClass('hidden');
             showSection($resultsSection); // Show results/error section
             return false; // Indicate failure
@@ -424,7 +430,7 @@ $(document).ready(function() {
         currentQuestionIndex = numQuestions; // Ensure progress bar calculation is for completion
         updateProgressBar(); // This will now set it to 100% and update ARIA
 
-        // Store detailed quiz results for history
+        // Store detailed quiz results for history via the backend
         const loggedInUser = getCookie(SESSION_COOKIE_NAME);
         if (loggedInUser && numQuestions > 0) { // Only store if logged in and quiz had questions
             const quizResult = {
@@ -434,13 +440,19 @@ $(document).ready(function() {
 
             try {
                 await $.ajax({
-                    url: `${API_URL}results`,
+                    url: `${API_URL}results.php`,
                     method: 'POST',
                     data: quizResult,
                     dataType: 'json'
                 });
+                 console.log("Quiz result saved successfully via backend.");
             } catch (error) {
-                console.error("Error saving quiz results:", error);
+                // The error object from jQuery AJAX contains useful info
+                const errorMsg = error.responseJSON ? error.responseJSON.message : "Could not save quiz result.";
+                console.error("Error saving quiz results via backend:", errorMsg);
+                // Optionally, inform the user that saving the result failed.
+                // This could be a small, non-intrusive message in the results area.
+                 $('#error-message-quiz').text("Note: Could not save this quiz to your history.").removeClass('hidden');
             }
         }
 
@@ -594,7 +606,7 @@ $(document).ready(function() {
 
         try {
             const response = await $.ajax({
-                url: `${API_URL}register`,
+                url: `${API_URL}register.php`,
                 method: 'POST',
                 data: { username, password },
                 dataType: 'json'
@@ -606,15 +618,25 @@ $(document).ready(function() {
                 $regPasswordInput.val('');
                 setTimeout(() => {
                     $showLoginLink.trigger('click');
-                    $loginUsernameInput.val(username);
+                    $loginUsernameInput.val(username); // Pre-fill username on login form
                     $loginPasswordInput.focus();
-                    $regFeedback.text('');
+                    $regFeedback.text(''); // Clear success message after switch
                 }, 1500);
-            } else {
-                $regFeedback.text(Object.values(response.errors).join(', ')).removeClass('text-green-500').addClass('text-red-500');
             }
         } catch (error) {
-            $regFeedback.text('An error occurred during registration.').removeClass('text-green-500').addClass('text-red-500');
+            // Handle AJAX errors (e.g., 400, 409, 500)
+            const errorResponse = error.responseJSON;
+            if (errorResponse && errorResponse.errors) {
+                // Display specific validation errors from the backend
+                const errorMessages = Object.values(errorResponse.errors).join(', ');
+                $regFeedback.text(errorMessages).removeClass('text-green-500').addClass('text-red-500');
+            } else if (errorResponse && errorResponse.message) {
+                // Display a generic message from the backend
+                $regFeedback.text(errorResponse.message).removeClass('text-green-500').addClass('text-red-500');
+            } else {
+                // Fallback for network errors or unexpected issues
+                $regFeedback.text('An error occurred during registration. Please try again.').removeClass('text-green-500').addClass('text-red-500');
+            }
         }
     });
 
@@ -631,24 +653,23 @@ $(document).ready(function() {
 
         try {
             const response = await $.ajax({
-                url: `${API_URL}login`,
+                url: `${API_URL}login.php`,
                 method: 'POST',
                 data: { username, password },
                 dataType: 'json'
             });
 
             if (response.status === 'ok') {
-                setCookie(SESSION_COOKIE_NAME, response.user.username, 1);
                 $loginFeedback.text('Login successful!').removeClass('text-red-500').addClass('text-green-500');
                 $loginUsernameInput.val('');
                 $loginPasswordInput.val('');
                 updateUIAfterLogin(response.user.username);
                 setTimeout(() => { $loginFeedback.text(''); }, 1500);
-            } else {
-                $loginFeedback.text('Invalid username or password.').removeClass('text-green-500').addClass('text-red-500');
             }
         } catch (error) {
-            $loginFeedback.text('An error occurred during login.').removeClass('text-green-500').addClass('text-red-500');
+            const errorResponse = error.responseJSON;
+            const message = (errorResponse && errorResponse.message) ? errorResponse.message : 'An error occurred during login.';
+            $loginFeedback.text(message).removeClass('text-green-500').addClass('text-red-500');
         }
     });
 
@@ -672,9 +693,19 @@ $(document).ready(function() {
     }
 
     // --- Logout Logic ---
-    $logoutBtn.on('click', function() {
-        deleteCookie(SESSION_COOKIE_NAME);
-        updateUIAfterLogout();
+    $logoutBtn.on('click', async function() {
+        try {
+            await $.ajax({
+                url: `${API_URL}logout.php`,
+                method: 'POST',
+            });
+            updateUIAfterLogout();
+            console.log("Logout successful on backend.");
+        } catch (error) {
+            console.error("Logout failed on backend:", error);
+            // Even if backend call fails, proceed with client-side logout for better UX
+            updateUIAfterLogout();
+        }
     });
 
     function updateUIAfterLogout() {
@@ -753,7 +784,7 @@ $(document).ready(function() {
 
         try {
             const userHistory = await $.ajax({
-                url: `${API_URL}history`,
+                url: `${API_URL}history.php`,
                 method: 'GET',
                 dataType: 'json'
             });
@@ -780,7 +811,8 @@ $(document).ready(function() {
                 const $tbody = $('<tbody class="bg-white divide-y divide-gray-200"></tbody>');
                 userHistory.forEach(quiz => {
                     const $row = $('<tr></tr>');
-                    const quizDate = new Date(quiz.created_at * 1000).toLocaleString();
+                    // The backend now provides 'created_at' as a string, but also a 'timestamp' in ms
+                    const quizDate = new Date(quiz.timestamp).toLocaleString();
                     $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${quizDate}</td>`);
                     $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${quiz.score}</td>`);
                     $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${quiz.total}</td>`);
@@ -790,7 +822,7 @@ $(document).ready(function() {
                 $historyTablePlaceholder.append($table);
             }
         } catch (error) {
-            console.error("Error fetching quiz history:", error);
+            console.error("Error fetching quiz history from backend:", error);
             $noHistoryMessage.text("Could not load quiz history.").removeClass('hidden');
         }
     }
