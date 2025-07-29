@@ -27,6 +27,10 @@ AppAsset::register($this);
 <?php $this->beginBody() ?>
 
 <div class="container mx-auto p-4">
+    <?= Breadcrumbs::widget([
+        'links' => isset($this->params['breadcrumbs']) ? $this->params['breadcrumbs'] : [],
+    ]) ?>
+    <?= Alert::widget() ?>
     <?= $content ?>
 </div>
 
