@@ -40,7 +40,7 @@ $(document).ready(function() {
     let totalQuizTime = 0; // in seconds
     let timeRemaining = 0; // in seconds
 
-    const API_URL = "https://opentdb.com/";
+    const API_URL = "/api/";
 
     // Timer Constants
     const BASE_SECONDS_PER_QUESTION = 20; // Average time for a medium question
@@ -249,14 +249,14 @@ $(document).ready(function() {
     async function populateCategories() {
         try {
             const response = await $.ajax({
-                url: `${API_URL}api_category.php`,
+                url: `${API_URL}categories`,
                 method: 'GET',
                 dataType: 'json'
             });
-            if (response.trivia_categories && response.trivia_categories.length > 0) {
+            if (response && response.length > 0) {
                 $categorySelect.empty(); // Clear existing options first
                 $categorySelect.append('<option value="">Any Category</option>');
-                response.trivia_categories.forEach(category => {
+                response.forEach(category => {
                     $categorySelect.append(`<option value="${category.id}">${category.name}</option>`);
                 });
                 console.log("Categories populated.");
@@ -276,10 +276,7 @@ $(document).ready(function() {
         const selectedDifficulty = $difficultySelect.val();
         const selectedType = $typeSelect.val();
 
-        let apiUrl = `${API_URL}api.php?amount=${questionAmount}`;
-        if (sessionToken) {
-            apiUrl += `&token=${sessionToken}`;
-        }
+        let apiUrl = `${API_URL}questions?amount=${questionAmount}`;
         if (selectedCategory) {
             apiUrl += `&category=${selectedCategory}`;
         }
@@ -289,7 +286,6 @@ $(document).ready(function() {
         if (selectedType) {
             apiUrl += `&type=${selectedType}`;
         }
-        // Using default encoding (HTML entities) for now, can add 'encode' parameter if needed
 
         console.log("Fetching questions from:", apiUrl);
         $errorMessageQuiz.text('').addClass('hidden'); // Clear previous errors
@@ -301,63 +297,19 @@ $(document).ready(function() {
                 dataType: 'json'
             });
             console.log("API Response:", response);
-            return handleApiResponse(response);
+            questions = response;
+            if (questions.length === 0) {
+                console.warn("API Success but no questions returned.");
+                $errorMessageQuiz.text('No questions found for your criteria. Please try different settings.').removeClass('hidden');
+                showSection($resultsSection);
+                return false;
+            }
+            return true;
         } catch (error) {
             console.error("Error fetching questions:", error);
             $errorMessageQuiz.text('Failed to fetch questions. Please check your connection and try again.').removeClass('hidden');
             showSection($resultsSection); // Show results/error section
             return false; // Indicate failure
-        }
-    }
-
-    async function handleApiResponse(response) {
-        switch (response.response_code) {
-            case 0: // Success
-                questions = response.results;
-                if (questions.length === 0) { // Should be caught by code 1, but as a safeguard
-                    console.warn("API Success (0) but no questions returned.");
-                    $errorMessageQuiz.text('No questions found for your criteria. Please try different settings.').removeClass('hidden');
-                    showSection($resultsSection);
-                    return false;
-                }
-                console.log("Questions received:", questions);
-                return true; // Indicate success
-            case 1: // No Results
-                console.warn("API Response: No Results. Could not return results. The API doesn't have enough questions for your query.");
-                $errorMessageQuiz.text('Not enough questions found for your selected criteria. Please try different settings or a smaller amount.').removeClass('hidden');
-                showSection($resultsSection);
-                 // No need to reset token here, it's a query issue
-                return false;
-            case 2: // Invalid Parameter
-                console.error("API Response: Invalid Parameter. Arguments passed in aren't valid.");
-                $errorMessageQuiz.text('There was an issue with the quiz parameters. (Invalid Parameter)').removeClass('hidden');
-                showSection($resultsSection);
-                // This is a developer/logic error, should be investigated
-                return false;
-            case 3: // Token Not Found
-                console.warn("API Response: Token Not Found. Session Token does not exist.");
-                $errorMessageQuiz.text('Your quiz session has expired or is invalid. Please start a new quiz.').removeClass('hidden');
-                await resetSessionToken(); // Request a new token
-                showSection($settingsSection); // Send user back to settings
-                return false;
-            case 4: // Token Empty
-                console.warn("API Response: Token Empty. Session Token has returned all possible questions for the query.");
-                $errorMessageQuiz.text('You\'ve answered all available questions for this session! Please reset the session or try different settings.').removeClass('hidden');
-                // Advise user to reset token (or we can do it automatically)
-                // await resetSessionToken(); // Or offer a button to reset
-                showSection($resultsSection); // Show results, user can then go to settings
-                return false;
-            case 5: // Rate Limit
-                console.warn("API Response: Rate Limit. Too many requests. Please wait 5 seconds.");
-                $errorMessageQuiz.text('Too many requests. Please wait a few seconds and try again.').removeClass('hidden');
-                // Could implement a retry mechanism with a delay
-                showSection($settingsSection); // Send back to settings to wait
-                return false;
-            default:
-                console.error("API Response: Unknown error code.", response.response_code);
-                $errorMessageQuiz.text(`An unknown error occurred (Code: ${response.response_code}).`).removeClass('hidden');
-                showSection($resultsSection);
-                return false;
         }
     }
 
@@ -455,7 +407,7 @@ $(document).ready(function() {
         $nextQuestionBtn.removeClass('hidden').focus(); // Show and focus on the next button
     }
 
-    function showResults() {
+    async function showResults() {
         stopTimer(); // Stop timer as quiz is ending
         $quizSection.addClass('hidden');
 
@@ -475,26 +427,21 @@ $(document).ready(function() {
         // Store detailed quiz results for history
         const loggedInUser = getCookie(SESSION_COOKIE_NAME);
         if (loggedInUser && numQuestions > 0) { // Only store if logged in and quiz had questions
-            const categoryName = $categorySelect.find('option:selected').text();
-            const difficultyName = $difficultySelect.find('option:selected').text();
-
             const quizResult = {
-                timestamp: new Date().toISOString(),
-                category: $categorySelect.val() ? { id: $categorySelect.val(), name: categoryName } : { id: '', name: 'Any Category'},
-                difficulty: $difficultySelect.val() ? {value: $difficultySelect.val(), name: difficultyName } : { value: '', name: 'Any Difficulty'},
-                questionType: $typeSelect.val() ? $typeSelect.find('option:selected').text() : 'Any Type',
-                numQuestions: numQuestions,
-                correct: correctCount,
-                incorrect: incorrectCount,
-                percentage: parseFloat(percentage.toFixed(1)),
-                timeTaken: totalQuizTime > 0 ? totalQuizTime - Math.max(0, timeRemaining) : null // Time spent in seconds
+                score: correctCount,
+                total: numQuestions,
             };
 
-            const historyKey = `quizHistory_${loggedInUser}`;
-            let userHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
-            userHistory.push(quizResult);
-            localStorage.setItem(historyKey, JSON.stringify(userHistory));
-            console.log("Quiz result stored for user:", loggedInUser, quizResult);
+            try {
+                await $.ajax({
+                    url: `${API_URL}results`,
+                    method: 'POST',
+                    data: quizResult,
+                    dataType: 'json'
+                });
+            } catch (error) {
+                console.error("Error saving quiz results:", error);
+            }
         }
 
         showSection($resultsSection);
@@ -635,47 +582,44 @@ $(document).ready(function() {
     });
 
     // --- Registration Logic ---
-    $registrationForm.on('submit', function(e) {
+    $registrationForm.on('submit', async function(e) {
         e.preventDefault();
         const username = $regUsernameInput.val().trim();
-        const password = $regPasswordInput.val(); // For this demo, not hashing. Real app MUST hash.
+        const password = $regPasswordInput.val();
 
         if (!username || !password) {
             $regFeedback.text('Username and password are required.').removeClass('text-green-500').addClass('text-red-500');
             return;
         }
-        // Basic password length check (example)
-        if (password.length < 6) {
-            $regFeedback.text('Password must be at least 6 characters long.').removeClass('text-green-500').addClass('text-red-500');
-            return;
-        }
 
+        try {
+            const response = await $.ajax({
+                url: `${API_URL}register`,
+                method: 'POST',
+                data: { username, password },
+                dataType: 'json'
+            });
 
-        let users = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY)) || {};
-
-        if (users[username]) {
-            $regFeedback.text('Username already exists. Please choose another.').removeClass('text-green-500').addClass('text-red-500');
-        } else {
-            // Simulate storing the user. In a real app, password would be securely hashed.
-            users[username] = { password: password }; // Storing plain password for demo purposes ONLY.
-            localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
-
-            $regFeedback.text('Registration successful! Please login.').removeClass('text-red-500').addClass('text-green-500');
-            $regUsernameInput.val(''); // Clear registration form
-            $regPasswordInput.val('');
-
-            // Automatically switch to login form
-            setTimeout(() => {
-                $showLoginLink.trigger('click'); // Simulate click to switch forms
-                $loginUsernameInput.val(username); // Pre-fill username in login form
-                $loginPasswordInput.focus();
-                $regFeedback.text(''); // Clear registration success message after switch
-            }, 1500); // Delay to allow user to read success message
+            if (response.status === 'ok') {
+                $regFeedback.text('Registration successful! Please login.').removeClass('text-red-500').addClass('text-green-500');
+                $regUsernameInput.val('');
+                $regPasswordInput.val('');
+                setTimeout(() => {
+                    $showLoginLink.trigger('click');
+                    $loginUsernameInput.val(username);
+                    $loginPasswordInput.focus();
+                    $regFeedback.text('');
+                }, 1500);
+            } else {
+                $regFeedback.text(Object.values(response.errors).join(', ')).removeClass('text-green-500').addClass('text-red-500');
+            }
+        } catch (error) {
+            $regFeedback.text('An error occurred during registration.').removeClass('text-green-500').addClass('text-red-500');
         }
     });
 
     // --- Login Logic ---
-    $loginForm.on('submit', function(e) {
+    $loginForm.on('submit', async function(e) {
         e.preventDefault();
         const username = $loginUsernameInput.val().trim();
         const password = $loginPasswordInput.val();
@@ -685,23 +629,26 @@ $(document).ready(function() {
             return;
         }
 
-        let users = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY)) || {};
-        const user = users[username];
+        try {
+            const response = await $.ajax({
+                url: `${API_URL}login`,
+                method: 'POST',
+                data: { username, password },
+                dataType: 'json'
+            });
 
-        if (user && user.password === password) { // In a real app, compare hashed passwords securely
-            setCookie(SESSION_COOKIE_NAME, username, 1); // Set session cookie for 1 day
-
-            $loginFeedback.text('Login successful!').removeClass('text-red-500').addClass('text-green-500');
-            $loginUsernameInput.val('');
-            $loginPasswordInput.val('');
-
-            updateUIAfterLogin(username);
-
-            // Optionally clear success message after a delay
-            setTimeout(() => { $loginFeedback.text(''); }, 1500);
-
-        } else {
-            $loginFeedback.text('Invalid username or password.').removeClass('text-green-500').addClass('text-red-500');
+            if (response.status === 'ok') {
+                setCookie(SESSION_COOKIE_NAME, response.user.username, 1);
+                $loginFeedback.text('Login successful!').removeClass('text-red-500').addClass('text-green-500');
+                $loginUsernameInput.val('');
+                $loginPasswordInput.val('');
+                updateUIAfterLogin(response.user.username);
+                setTimeout(() => { $loginFeedback.text(''); }, 1500);
+            } else {
+                $loginFeedback.text('Invalid username or password.').removeClass('text-green-500').addClass('text-red-500');
+            }
+        } catch (error) {
+            $loginFeedback.text('An error occurred during login.').removeClass('text-green-500').addClass('text-red-500');
         }
     });
 
@@ -796,7 +743,7 @@ $(document).ready(function() {
         }
     }
 
-    function loadAndDisplayQuizHistory() {
+    async function loadAndDisplayQuizHistory() {
         const loggedInUser = getCookie(SESSION_COOKIE_NAME);
         if (!loggedInUser) {
             $noHistoryMessage.text("Please log in to view history.").removeClass('hidden');
@@ -804,48 +751,47 @@ $(document).ready(function() {
             return;
         }
 
-        const historyKey = `quizHistory_${loggedInUser}`;
-        const userHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
-
-        $historyTablePlaceholder.empty(); // Clear previous table/message
-
-        if (userHistory.length === 0) {
-            $noHistoryMessage.text("No quiz history found.").removeClass('hidden');
-        } else {
-            $noHistoryMessage.addClass('hidden');
-            const $table = $('<table class="min-w-full divide-y divide-gray-200 border border-gray-300"></table>');
-
-            // Add a caption for accessibility
-            const $caption = $('<caption>A summary of your past quiz attempts, showing details including date, category, difficulty, and score.</caption>');
-            $caption.addClass('sr-only'); // Visually hide, but available to screen readers
-            $table.append($caption);
-
-            const $thead = $('<thead class="bg-gray-50"><tr></tr></thead>');
-            const headers = ["Date", "Category", "Difficulty", "Type", "Questions", "Correct", "Score %", "Time Taken"];
-            headers.forEach(header => {
-                $thead.find('tr').append(`<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${header}</th>`);
+        try {
+            const userHistory = await $.ajax({
+                url: `${API_URL}history`,
+                method: 'GET',
+                dataType: 'json'
             });
-            $table.append($thead);
 
-            const $tbody = $('<tbody class="bg-white divide-y divide-gray-200"></tbody>');
-            // Display latest quizzes first
-            userHistory.slice().reverse().forEach(quiz => {
-                const $row = $('<tr></tr>');
-                const quizDate = new Date(quiz.timestamp).toLocaleString();
-                const timeTakenStr = quiz.timeTaken !== null ? formatTime(quiz.timeTaken) : 'N/A';
+            $historyTablePlaceholder.empty(); // Clear previous table/message
 
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${quizDate}</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${quiz.category.name}</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${quiz.difficulty.name}</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${quiz.questionType}</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${quiz.numQuestions}</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${quiz.correct}</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center font-semibold">${quiz.percentage}%</td>`);
-                $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${timeTakenStr}</td>`);
-                $tbody.append($row);
-            });
-            $table.append($tbody);
-            $historyTablePlaceholder.append($table);
+            if (userHistory.length === 0) {
+                $noHistoryMessage.text("No quiz history found.").removeClass('hidden');
+            } else {
+                $noHistoryMessage.addClass('hidden');
+                const $table = $('<table class="min-w-full divide-y divide-gray-200 border border-gray-300"></table>');
+
+                const $caption = $('<caption>A summary of your past quiz attempts, showing details including date, score, and total questions.</caption>');
+                $caption.addClass('sr-only');
+                $table.append($caption);
+
+                const $thead = $('<thead class="bg-gray-50"><tr></tr></thead>');
+                const headers = ["Date", "Score", "Total Questions"];
+                headers.forEach(header => {
+                    $thead.find('tr').append(`<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${header}</th>`);
+                });
+                $table.append($thead);
+
+                const $tbody = $('<tbody class="bg-white divide-y divide-gray-200"></tbody>');
+                userHistory.forEach(quiz => {
+                    const $row = $('<tr></tr>');
+                    const quizDate = new Date(quiz.created_at * 1000).toLocaleString();
+                    $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${quizDate}</td>`);
+                    $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${quiz.score}</td>`);
+                    $row.append(`<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 text-center">${quiz.total}</td>`);
+                    $tbody.append($row);
+                });
+                $table.append($tbody);
+                $historyTablePlaceholder.append($table);
+            }
+        } catch (error) {
+            console.error("Error fetching quiz history:", error);
+            $noHistoryMessage.text("Could not load quiz history.").removeClass('hidden');
         }
     }
 
