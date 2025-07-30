@@ -101,7 +101,7 @@ function migrate_data() {
 
                     if (!$questionsData || !isset($questionsData['results'])) {
                         echo "Failed to fetch questions data or empty results. Moving to next category.\n";
-                        break;
+                        continue;
                     }
 
                     $responseCode = $questionsData['response_code'];
@@ -120,7 +120,8 @@ function migrate_data() {
                     $questions = $questionsData['results'];
                     if (empty($questions)) {
                         echo "No more questions found for this category.\n";
-                        break;
+                        $remainingQuestions = 0; // Force the loop to terminate
+                        continue;
                     }
 
                     foreach ($questions as $question) {
