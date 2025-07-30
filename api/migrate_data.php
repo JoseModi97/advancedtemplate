@@ -4,9 +4,8 @@
 require_once 'db.php';
 
 // --- Configuration ---
-define('OTDB_API_CATEGORIES_URL', 'https://opentdb.com/api_category.php');
-define('OTDB_API_QUESTIONS_URL', 'https://opentdb.com/api.php');
-define('QUESTIONS_PER_CATEGORY', 50); // Number of questions to fetch per category
+define('OTDB_API_BASE_URL', 'https://opentdb.com/');
+define('QUESTIONS_PER_REQUEST', 50); // Max allowed by the API
 
 // --- Helper Functions ---
 
@@ -14,19 +13,50 @@ function fetchJson($url) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
+    $error = curl_error($ch);
     curl_close($ch);
+
+    if ($error) {
+        echo "cURL Error: $error\n";
+        return null;
+    }
     return json_decode($response, true);
+}
+
+function requestToken() {
+    $tokenData = fetchJson(OTDB_API_BASE_URL . 'api_token.php?command=request');
+    if (isset($tokenData['token'])) {
+        echo "Session token obtained: {$tokenData['token']}\n";
+        return $tokenData['token'];
+    }
+    echo "Failed to obtain session token.\n";
+    return null;
+}
+
+function resetToken($token) {
+    $tokenData = fetchJson(OTDB_API_BASE_URL . 'api_token.php?command=reset&token=' . $token);
+    if (isset($tokenData['token'])) {
+        echo "Session token reset successfully. New token: {$tokenData['token']}\n";
+        return $tokenData['token'];
+    }
+    echo "Failed to reset session token.\n";
+    return null;
 }
 
 // --- Main Logic ---
 
 function migrate_data() {
     $pdo = getDBConnection();
+    $token = requestToken();
+    if (!$token) {
+        return; // Stop if we can't get a token
+    }
 
     // 1. Migrate Categories
     echo "Migrating categories...\n";
-    $categoriesData = fetchJson(OTDB_API_CATEGORIES_URL);
+    $categoriesData = fetchJson(OTDB_API_BASE_URL . 'api_category.php');
     if (isset($categoriesData['trivia_categories'])) {
         $categories = $categoriesData['trivia_categories'];
         $stmt = $pdo->prepare("INSERT INTO categories (id, name) VALUES (:id, :name) ON DUPLICATE KEY UPDATE name = VALUES(name)");
@@ -43,49 +73,58 @@ function migrate_data() {
         );
 
         $totalCategories = count($categories);
-        $currentCategory = 1;
+        $currentCategoryIndex = 1;
 
         foreach ($categories as $category) {
             echo "----------------------------------------\n";
-            echo "Fetching questions for category: {$category['name']} ($currentCategory/$totalCategories)\n";
+            echo "Fetching questions for category: {$category['name']} ({$currentCategoryIndex}/{$totalCategories})\n";
 
             $totalQuestionsMigrated = 0;
 
             while (true) {
-                $apiUrl = OTDB_API_QUESTIONS_URL . '?amount=50&category=' . $category['id'];
+                $apiUrl = OTDB_API_BASE_URL . 'api.php?amount=' . QUESTIONS_PER_REQUEST . '&category=' . $category['id'] . '&token=' . $token;
                 $questionsData = fetchJson($apiUrl);
 
-                if (isset($questionsData['results']) && !empty($questionsData['results'])) {
-                    $questions = $questionsData['results'];
-                    foreach ($questions as $question) {
-                        $questionStmt->execute([
-                            'category_id' => $category['id'],
-                            'difficulty' => $question['difficulty'],
-                            'question' => $question['question'],
-                            'correct_answer' => $question['correct_answer'],
-                            'incorrect_answers' => json_encode($question['incorrect_answers']),
-                        ]);
-                    }
-                    $count = count($questions);
-                    $totalQuestionsMigrated += $count;
-                    echo "Migrated $count questions...\n";
-
-                    // If we get less than 50 questions, it means we have reached the end for this category.
-                    if ($count < 50) {
-                        break;
-                    }
-                } else {
-                    // No more questions for this category
+                if (!$questionsData) {
+                    echo "Failed to fetch questions data. Moving to next category.\n";
                     break;
                 }
+
+                $responseCode = $questionsData['response_code'];
+                if ($responseCode == 4) { // Token has been exhausted
+                    echo "Token exhausted. Resetting token...\n";
+                    $token = resetToken($token);
+                    if (!$token) return; // Stop if token reset fails
+                    continue; // Retry the same category with the new token
+                }
+
+                if ($responseCode != 0) { // No results or other error
+                    break; // Move to the next category
+                }
+
+                $questions = $questionsData['results'];
+                foreach ($questions as $question) {
+                    $questionStmt->execute([
+                        'category_id' => $category['id'],
+                        'difficulty' => $question['difficulty'],
+                        'question' => $question['question'],
+                        'correct_answer' => $question['correct_answer'],
+                        'incorrect_answers' => json_encode($question['incorrect_answers']),
+                    ]);
+                }
+
+                $count = count($questions);
+                $totalQuestionsMigrated += $count;
+                echo "Migrated $count questions...\n";
+
                 // Add a small delay to avoid overwhelming the API
                 sleep(1);
             }
             echo "Successfully migrated $totalQuestionsMigrated questions for category: {$category['name']}.\n";
-            $currentCategory++;
+            $currentCategoryIndex++;
         }
         echo "----------------------------------------\n";
-        echo "Questions migrated successfully.\n";
+        echo "All questions migrated successfully.\n";
     } else {
         echo "Could not fetch categories.\n";
     }
