@@ -2,10 +2,10 @@
 // api/db.php
 
 // --- Database Configuration ---
-define('DB_HOST', 'your_database_host'); // e.g., 'localhost' or '127.0.0.1'
-define('DB_NAME', 'your_database_name');
-define('DB_USER', 'your_username');
-define('DB_PASS', 'your_password');
+define('DB_HOST', 'localhost'); // e.g., 'localhost' or '127.0.0.1'
+define('DB_NAME', 'trivia');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
 /**
