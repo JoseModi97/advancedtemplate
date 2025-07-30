@@ -91,6 +91,12 @@ function migrate_data() {
                 }
 
                 $responseCode = $questionsData['response_code'];
+
+                if ($responseCode == 1) { // No results
+                    echo "No questions found for this category.\n";
+                    break;
+                }
+
                 if ($responseCode == 4) { // Token has been exhausted
                     echo "Token exhausted. Resetting token...\n";
                     $token = resetToken($token);
@@ -98,7 +104,7 @@ function migrate_data() {
                     continue; // Retry the same category with the new token
                 }
 
-                if ($responseCode != 0) { // No results or other error
+                if ($responseCode != 0) { // Other error
                     break; // Move to the next category
                 }
 
