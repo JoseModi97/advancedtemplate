@@ -51,13 +51,25 @@ This is a web-based trivia quiz application built with PHP, jQuery, and Tailwind
 
 5. **Run the application:**
 
-   - You can use a local web server like XAMPP or MAMP, or you can use the built-in PHP web server:
+   You have two options for running the application:
 
-     ```bash
-     php -S localhost:8000
-     ```
+   **Option 1: Using a local web server (e.g., XAMPP, MAMP)**
 
-     Then, open your web browser and navigate to `http://localhost:8000`.
+   1.  Place the project folder in the `htdocs` directory of your XAMPP or MAMP installation.
+   2.  Start your Apache server.
+   3.  Open your web browser and navigate to `http://localhost/your-repository-name`.
+
+   The included `.htaccess` file will handle the URL rewriting, providing cleaner and more user-friendly URLs.
+
+   **Option 2: Using the built-in PHP web server**
+
+   If you prefer not to use a full web server, you can use PHP's built-in server:
+
+   ```bash
+   php -S localhost:8000
+   ```
+
+   Then, open your web browser and navigate to `http://localhost:8000`.
 
 ## Data Migration
 
