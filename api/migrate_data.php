@@ -13,7 +13,7 @@ function fetchJson($url) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     $response = curl_exec($ch);
     $error = curl_error($ch);
     curl_close($ch);
@@ -92,8 +92,8 @@ function migrate_data() {
 
                 $responseCode = $questionsData['response_code'];
 
-                if ($responseCode == 1) { // No results
-                    echo "No questions found for this category.\n";
+                if ($responseCode == 1) { // No results, but we might have gotten some questions before
+                    echo "No more questions found for this category.\n";
                     break;
                 }
 
@@ -123,8 +123,15 @@ function migrate_data() {
                 $totalQuestionsMigrated += $count;
                 echo "Migrated $count questions...\n";
 
+
+                // If we receive fewer than the max number of questions, we're done with this category
+                if ($count < QUESTIONS_PER_REQUEST) {
+                    echo "All questions for this category have been migrated.\n";
+                    break;
+                }
+
                 // Add a small delay to avoid overwhelming the API
-                sleep(1);
+                sleep(5);
             }
             echo "Successfully migrated $totalQuestionsMigrated questions for category: {$category['name']}.\n";
             $currentCategoryIndex++;
