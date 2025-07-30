@@ -30,6 +30,7 @@ function deleteCookie(name) {
 $(document).ready(function() {
     // Global state variables
     let sessionToken = null;
+    let currentUser = null; // Will hold user {id, username}
     let questions = [];
     let currentQuestionIndex = 0;
     let score = 0;
@@ -201,7 +202,7 @@ $(document).ready(function() {
 
             if (response.loggedIn) {
                 console.log("User", response.user.username, "is logged in from backend session.");
-                updateUIAfterLogin(response.user.username);
+                updateUIAfterLogin(response.user);
             } else {
                 console.log("No user logged in. Showing auth forms.");
                 updateUIAfterLogout();
@@ -431,9 +432,9 @@ $(document).ready(function() {
         updateProgressBar(); // This will now set it to 100% and update ARIA
 
         // Store detailed quiz results for history via the backend
-        const loggedInUser = getCookie(SESSION_COOKIE_NAME);
-        if (loggedInUser && numQuestions > 0) { // Only store if logged in and quiz had questions
+        if (currentUser && numQuestions > 0) { // Only store if a user is logged in and quiz had questions
             const quizResult = {
+                user_id: currentUser.id, // Pass the user's ID
                 score: correctCount,
                 total: numQuestions,
             };
@@ -663,7 +664,7 @@ $(document).ready(function() {
                 $loginFeedback.text('Login successful!').removeClass('text-red-500').addClass('text-green-500');
                 $loginUsernameInput.val('');
                 $loginPasswordInput.val('');
-                updateUIAfterLogin(response.user.username);
+                updateUIAfterLogin(response.user);
                 setTimeout(() => { $loginFeedback.text(''); }, 1500);
             }
         } catch (error) {
@@ -673,14 +674,15 @@ $(document).ready(function() {
         }
     });
 
-    function updateUIAfterLogin(username) {
+    function updateUIAfterLogin(user) {
+        currentUser = user; // Store user object {id, username}
         $authSection.addClass('hidden'); // Hide login/reg section
         $quizMainContainer.removeClass('hidden'); // Show main quiz content
         $settingsSection.removeClass('hidden'); // Ensure settings are visible if previously hidden by quiz flow
         $quizSection.addClass('hidden'); // Keep quiz gameplay hidden until started
         $resultsSection.addClass('hidden'); // Keep results hidden
 
-        $userDisplay.text(`Logged in as: ${username}`);
+        $userDisplay.text(`Logged in as: ${user.username}`);
         $userInfoContainer.removeClass('hidden'); // Show user info (name + logout button)
 
         // Reset any previous quiz state when logging in, ready for a fresh start
@@ -721,6 +723,7 @@ $(document).ready(function() {
 
         $userInfoContainer.addClass('hidden'); // Hide user info (name + logout button)
         $userDisplay.text('');
+        currentUser = null; // Clear the user data on logout
 
         // Clear quiz specific data and OpenTDB session token
         resetQuizState();

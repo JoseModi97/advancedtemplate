@@ -17,13 +17,21 @@ if (!isset($_SESSION['user_id'])) {
 // --- Main Logic ---
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Get user ID from the session
-    $userId = $_SESSION['user_id'];
+    // Get user ID from the POST request, ensuring it's an integer
+    $userId = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
 
     // Get score and total from the POST request
-    // Use filter_input for basic validation and security
     $score = filter_input(INPUT_POST, 'score', FILTER_VALIDATE_INT);
     $total = filter_input(INPUT_POST, 'total', FILTER_VALIDATE_INT);
+
+    // --- Additional Security Check ---
+    // Verify that the user ID from the request matches the one in the session.
+    // This prevents a logged-in user from saving scores for another user.
+    if (!$userId || $userId !== $_SESSION['user_id']) {
+        http_response_code(403); // Forbidden
+        echo json_encode(['status' => 'error', 'message' => 'User ID mismatch or invalid.']);
+        exit;
+    }
 
     // Validate the input
     // is_numeric is used because filter_input returns false for 0, which is a valid score.
