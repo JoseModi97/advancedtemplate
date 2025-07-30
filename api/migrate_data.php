@@ -42,25 +42,49 @@ function migrate_data() {
              VALUES (:category_id, :difficulty, :question, :correct_answer, :incorrect_answers)"
         );
 
+        $totalCategories = count($categories);
+        $currentCategory = 1;
+
         foreach ($categories as $category) {
-            echo "Fetching questions for category: {$category['name']}...\n";
-            $questionsData = fetchJson(OTDB_API_QUESTIONS_URL . '?amount=' . QUESTIONS_PER_CATEGORY . '&category=' . $category['id']);
-            if (isset($questionsData['results'])) {
-                $questions = $questionsData['results'];
-                foreach ($questions as $question) {
-                    $questionStmt->execute([
-                        'category_id' => $category['id'],
-                        'difficulty' => $question['difficulty'],
-                        'question' => $question['question'],
-                        'correct_answer' => $question['correct_answer'],
-                        'incorrect_answers' => json_encode($question['incorrect_answers']),
-                    ]);
+            echo "----------------------------------------\n";
+            echo "Fetching questions for category: {$category['name']} ($currentCategory/$totalCategories)\n";
+
+            $totalQuestionsMigrated = 0;
+
+            while (true) {
+                $apiUrl = OTDB_API_QUESTIONS_URL . '?amount=50&category=' . $category['id'];
+                $questionsData = fetchJson($apiUrl);
+
+                if (isset($questionsData['results']) && !empty($questionsData['results'])) {
+                    $questions = $questionsData['results'];
+                    foreach ($questions as $question) {
+                        $questionStmt->execute([
+                            'category_id' => $category['id'],
+                            'difficulty' => $question['difficulty'],
+                            'question' => $question['question'],
+                            'correct_answer' => $question['correct_answer'],
+                            'incorrect_answers' => json_encode($question['incorrect_answers']),
+                        ]);
+                    }
+                    $count = count($questions);
+                    $totalQuestionsMigrated += $count;
+                    echo "Migrated $count questions...\n";
+
+                    // If we get less than 50 questions, it means we have reached the end for this category.
+                    if ($count < 50) {
+                        break;
+                    }
+                } else {
+                    // No more questions for this category
+                    break;
                 }
-                echo "Successfully migrated " . count($questions) . " questions for category: {$category['name']}.\n";
+                // Add a small delay to avoid overwhelming the API
+                sleep(1);
             }
-            // Add a small delay to avoid overwhelming the API
-            sleep(1);
+            echo "Successfully migrated $totalQuestionsMigrated questions for category: {$category['name']}.\n";
+            $currentCategory++;
         }
+        echo "----------------------------------------\n";
         echo "Questions migrated successfully.\n";
     } else {
         echo "Could not fetch categories.\n";
