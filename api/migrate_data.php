@@ -29,7 +29,7 @@ function migrate_data() {
     $categoriesData = fetchJson(OTDB_API_CATEGORIES_URL);
     if (isset($categoriesData['trivia_categories'])) {
         $categories = $categoriesData['trivia_categories'];
-        $stmt = $pdo->prepare("INSERT INTO categories (id, name) VALUES (:id, :name) ON DUPLICATE KEY UPDATE name = :name");
+        $stmt = $pdo->prepare("INSERT INTO categories (id, name) VALUES (:id, :name) ON DUPLICATE KEY UPDATE name = VALUES(name)");
         foreach ($categories as $category) {
             $stmt->execute(['id' => $category['id'], 'name' => $category['name']]);
         }
